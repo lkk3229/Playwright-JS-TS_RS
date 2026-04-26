@@ -1,0 +1,29 @@
+{
+  "name": "playwright-with-js_ts_rs",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "regression": "npx playwright test",
+    "webTests": "npx playwright test --grep @Web",
+    "APITests": "npx playwright test --grep @API",
+    "SafariNewConfig": "npx playwright test --config playwright.config1.js --project=safari",
+    "CucumberParallel": "npx cucumber-js features/Ecommerce.feature --parallel 2 --exit --format html:cucumber-report.html --retry 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@azure/identity": "^4.13.1",
+    "@azure/playwright": "^1.1.4",
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^25.5.0",
+    "allure-playwright": "^3.7.1",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@cucumber/cucumber": "^12.8.1",
+    "exceljs": "^4.4.0"
+  }
+}
