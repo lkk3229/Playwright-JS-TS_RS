@@ -1,0 +1,331 @@
+
+**Framework Architecture (How It Is Implemented)**
+
+1. Test Runner Layer  
+- Playwright test runner is configured with:
+  - test directory and matching
+  - retries = 3
+  - workers = 1 (sequential execution)
+  - reporters: list + allure + html
+  - trace/video/screenshot on failure
+- This favors reliability and debuggability over speed.
+
+Evidence:
+- playwright.config.ts
+
+2. Suite Orchestration Layer  
+- Global setup and teardown are used to clean and publish Allure artifacts.
+- There is also script-level cleanup in npm pretest, so cleanup happens in two places.
+
+Evidence:
+- globalSetup.ts
+- globalTeardown.ts
+- package.json
+
+3. Fixture and Session Layer  
+- Custom fixtures extend Playwright test object:
+  - authenticatedPage
+  - approverAuthenticatedPage
+  - loginPage
+- Shared login flow is centralized in performLogin, reducing duplication.
+
+Evidence:
+- baseFixtures.ts
+
+4. Page Abstraction Layer  
+- BasePage is a common superclass containing:
+  - safeClick fallback logic
+  - page readiness checks
+  - dialog helpers
+  - grid row search + polling helpers
+  - dropdown selection by label text
+- Business pages inherit from BasePage and only implement domain selectors/actions.
+
+Evidence:
+- BasePage.ts
+- LoginPage.ts
+- ApprovalLevelMatrixPage.ts
+- ApprovalMatrixPage.ts
+
+5. Test Scenario Layer  
+- Tests act as orchestration scripts:
+  - navigate
+  - call page methods
+  - branch based on config flags
+  - validate outcomes
+  - log each step
+- Examples include CRUD matrix tests and role-based workflow tests.
+
+Evidence:
+- TC001_LoginTest.spec.ts
+- TC002_ApprovalLevelMatrixTest.spec.ts
+- TC005_ApprovalMatrixTest.spec.ts
+- TC026_RequestCreationTest.spec.ts
+- TC029_ApproverReviewTest.spec.ts
+
+6. Data and Environment Layer  
+- Massive config object loads all test input from environment.
+- Naming convention encodes lifecycle:
+  - create values
+  - before-edit selectors
+  - edit values
+  - delete selectors
+- Mostly environment-driven; file-driven data appears in upload scenario.
+
+Evidence:
+- config.ts
+- MassRequestUpload.xlsx
+- TC021_MassRequestUploadTest.spec.ts
+
+7. Logging and Diagnostics Layer  
+- Winston logger with label-based cached instances.
+- Logs to both console and rotating file.
+- Structured messages improve failure triage.
+
+Evidence:
+- Logger.ts
+
+---
+
+**Design Patterns Used (Interview-Focused)**
+
+1. Page Object Model (Primary Pattern)  
+- Each screen is encapsulated in a dedicated page class.
+- Selectors and actions are hidden from tests.
+- Benefit: changes in UI locators mostly affect one class.
+
+Evidence:
+- LoginPage.ts
+- RequestCreationPage.ts
+- SubmitterReviewPage.ts
+
+2. Inheritance for Shared Behavior (Base Class Pattern)  
+- BasePage provides generalized mechanisms used by all pages.
+- Reduces duplicated resilience logic.
+
+Evidence:
+- BasePage.ts
+
+3. Fixture-based Dependency Injection  
+- Test dependencies are injected per test through fixture extension.
+- Supports role-specific authentication and reusable page provisioning.
+
+Evidence:
+- baseFixtures.ts
+
+4. Template/Workflow Encapsulation (Partial)  
+- Shared login workflow is centralized in performLogin.
+- Tests call fixtures, not low-level login steps.
+
+Evidence:
+- baseFixtures.ts
+
+5. Strategy via Configuration  
+- Behavior switches based on environment values:
+  - request type
+  - tabs
+  - action case values
+- Same test logic supports different business paths.
+
+Evidence:
+- config.ts
+- TC027_SubmitterReviewTest.spec.ts
+- TC028_AdminReviewTest.spec.ts
+- TC029_ApproverReviewTest.spec.ts
+
+6. Flyweight-like Logger Cache  
+- Logger instances are cached by label.
+- Prevents recreation and keeps consistent context tags.
+
+Evidence:
+- Logger.ts
+
+---
+
+**Execution Flow (End-to-End Mental Model)**
+
+1. Run starts.
+2. Global setup removes prior report artifacts.
+3. Playwright applies project config, timeouts, retries, reporters.
+4. Fixture logs in user or approver and returns ready page.
+5. Test instantiates relevant page object.
+6. Test performs scenario actions.
+7. BasePage utilities absorb flaky behavior with waits/fallbacks.
+8. Assertion validates state.
+9. Artifacts are collected (trace/video/screenshot on failure).
+10. Global teardown generates and opens Allure report.
+
+Evidence:
+- playwright.config.ts
+- globalSetup.ts
+- globalTeardown.ts
+- baseFixtures.ts
+
+---
+
+**Mendix-Specific Engineering Decisions**
+
+Your framework correctly addresses common Mendix UI automation issues:
+
+- Hidden duplicate controls across tabs
+- Data grids requiring cell click instead of row click
+- Status sometimes in title attribute, not visible text
+- Delayed widget rendering requiring polling and fallback click strategies
+
+Evidence:
+- AdminReviewPage.ts
+- ApproverReviewPage.ts
+- BasePage.ts
+
+This is a strong interview point: you are not using textbook selectors only; you adapted to platform quirks.
+
+---
+
+**Strengths You Should Highlight in Interview**
+
+- Practical enterprise POM, not toy examples
+- Reusable reliability layer in BasePage
+- Role-aware fixtures for workflow coverage
+- Config-driven branching for many business cases
+- Rich reporting setup (Allure + HTML + trace/video/screenshot)
+- Large scenario coverage breadth (33 specs)
+
+Evidence:
+- tests
+- playwright.config.ts
+- BasePage.ts
+
+---
+
+**Weaknesses and Risks (Critical Interview Maturity Points)**
+
+1. Some tests are weakly assertive  
+- Example: creation test performs actions but has no final expect verification in parts of suite.
+
+Evidence:
+- TC005_ApprovalMatrixTest.spec.ts
+
+2. Heavy use of fixed waits  
+- waitForTimeout appears in multiple tests and can hurt speed/stability under variance.
+
+Evidence:
+- tests
+- BasePage.ts
+
+3. Force click usage  
+- Useful for flaky UI, but can mask real interactability issues if overused.
+
+Evidence:
+- ApproverReviewPage.ts
+
+4. Cleanup/reporting duplication  
+- Both npm scripts and global hooks manipulate Allure directories.
+- Could cause confusion and maintenance drift.
+
+Evidence:
+- package.json
+- globalSetup.ts
+
+5. Sequential only  
+- workers = 1 improves determinism but slows large-suite throughput.
+
+Evidence:
+- playwright.config.ts
+
+6. Massive single config object  
+- Easy to start with, but harder to scale and validate by domain.
+
+Evidence:
+- config.ts
+
+---
+
+**Tricky Interview Questions You Are Likely to Get (With Strong Answer Direction)**
+
+1. Why POM instead of direct selectors in tests?  
+- Separation of concerns, maintainability, locator change impact isolation, reusable domain methods.
+
+2. Why a BasePage?  
+- Centralized reliability logic (safeClick, waitForPageReady, dialog/grid helpers), consistency across pages.
+
+3. Why fixtures instead of beforeEach hooks in every file?  
+- Dependency injection, composability, role-specific sessions, reduced duplication.
+
+4. Why workers = 1 when Playwright supports parallelism?  
+- System under test has shared-state dependencies; deterministic sequencing preferred for stability. Can scale with test-data isolation later.
+
+5. How do you handle flaky Mendix controls?  
+- visible scoping, title-attribute reads, cell-level clicks, polling loops, controlled fallbacks.
+
+6. Why retries = 3?  
+- To absorb transient environment/network/UI jitter while still retaining failure artifacts for root-cause analysis.
+
+7. How do you prove this is not just script automation?  
+- Show layered architecture: runner, fixtures, base abstractions, page objects, config strategy, reporting pipeline.
+
+8. How do you manage role-based tests?  
+- Dedicated approverAuthenticatedPage fixture with shared login helper and independent credential source.
+
+9. How do you keep tests data-driven?  
+- Environment-based config keys for create/edit/delete permutations and case branching.
+
+10. How do you balance robustness and correctness when using force click/JS fallback?  
+- Use as final fallback only; primary path remains regular user-like interaction.
+
+11. What is your assertion strategy?  
+- Prefer state verification after actions; identify and improve tests currently missing terminal assertions.
+
+12. How do you debug failures quickly?  
+- Structured step logs + Playwright trace/video/screenshot + Allure scenario history.
+
+13. How do you prevent selector brittleness?  
+- Encapsulate selectors in POM and scope by visible/context-aware locators.
+
+14. Why not use API login storage state fully?  
+- Utility exists but not yet integrated broadly; UI login currently validates real login path too. Could optimize later.
+
+Evidence:
+- apiLogin.ts
+
+15. What technical debt would you address first?  
+- Replace static waits with condition waits, add missing hard assertions, refactor config into typed domain modules, de-duplicate Allure lifecycle handling.
+
+---
+
+**How To Present This Framework in Interview (Suggested Narrative)**
+
+Use this structure when answering:
+
+1. Architecture in 30 seconds  
+- “It is a layered Playwright TypeScript framework using fixture-based dependency injection, BasePage reliability utilities, and domain page objects, with env-driven test data and Allure diagnostics.”
+
+2. Reliability in 30 seconds  
+- “For Mendix, we handle hidden duplicate elements, dialog quirks, and grid selection behavior using visible scoping, cell-level selection, polling utilities, and fallback interactions.”
+
+3. Scalability in 30 seconds  
+- “New tests are mostly orchestration-only: instantiate page, call business methods, assert output. Role fixtures and config keys allow scenario expansion without rewriting base logic.”
+
+4. Honest maturity in 30 seconds  
+- “Current debt includes fixed waits and some weaker assertions; planned improvements are condition-based waiting and stronger post-action validations.”
+
+---
+
+**Direct answer on TC001_LoginTest naming and intent**
+In TC001_LoginTest.spec.ts, TC001_LoginTest is the scenario identifier and logger label anchor. It provides:
+- test traceability across suite and reports
+- consistent log channel naming in Winston
+- easy mapping between requirement/test case ID and automation script
+
+Evidence:
+- TC001_LoginTest.spec.ts
+- Logger.ts
+
+---
+
+
+=======================================================================================================================
+API Testing Set up
+--------------------
+
+1. Do normal login and try to find login API from network tab with POST call, from there extract the token to bypass Login
+2. 
