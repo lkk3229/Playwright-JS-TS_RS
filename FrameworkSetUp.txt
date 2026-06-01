@@ -324,8 +324,1840 @@ Evidence:
 
 
 =======================================================================================================================
+NPM Commands – Creating the Framework from Scratch
+----------------------------------------------------
+
+Step 1: Initialize the project
+  npm init -y
+    - Creates package.json with default values.
+    - Use npm init (without -y) to answer prompts manually.
+
+Step 2: Install Playwright (with test runner)
+  npm install --save-dev @playwright/test
+    - Installs Playwright and the @playwright/test runner as a dev dependency.
+
+  npx playwright install
+    - Downloads browser binaries (Chromium, Firefox, WebKit).
+
+  npx playwright install --with-deps
+    - Also installs OS-level dependencies needed by browsers (recommended on CI/Linux).
+
+Step 3: Install TypeScript support
+  npm install --save-dev typescript ts-node @types/node
+    - typescript : the TypeScript compiler.
+    - ts-node    : run .ts files directly without a separate compile step.
+    - @types/node: Node.js type definitions.
+
+  npx tsc --init
+    - Generates a default tsconfig.json in the project root.
+    - Key options to set inside tsconfig.json:
+        "target": "ES2020"
+        "module": "commonjs"
+        "strict": true
+        "outDir": "./dist"
+        "rootDir": "./src" (or wherever your source lives)
+
+Step 4: Install Allure reporter
+  npm install --save-dev allure-playwright allure-commandline
+    - allure-playwright   : Playwright reporter plugin that writes Allure-compatible results.
+    - allure-commandline : CLI used in globalTeardown / npm scripts to generate the HTML report.
+
+Step 5: Install Winston logger
+  npm install winston
+  npm install --save-dev @types/winston
+    - winston         : structured logging library.
+    - @types/winston  : TypeScript types for winston.
+
+Step 6: Install dotenv (environment variable support)
+  npm install dotenv
+    - Loads .env file values into process.env at runtime.
+    - Add require('dotenv').config() at the top of your config entry point.
+
+Step 7: Install any additional utilities
+  npm install --save-dev cross-env
+    - Allows setting environment variables in npm scripts cross-platform (Windows + Unix).
+
+  npm install --save-dev rimraf
+    - Cross-platform rm -rf used in clean-up npm scripts.
+
+Step 8: Verify installed packages
+  npm list --depth=0
+    - Lists all top-level installed packages and their versions.
+
+Step 9: Common npm scripts to add in package.json
+  "scripts": {
+    "pretest"  : "rimraf allure-results test-results playwright-report",
+    "test"     : "npx playwright test",
+    "test:headed" : "npx playwright test --headed",
+    "test:ui"  : "npx playwright test --ui",
+    "report"   : "allure generate allure-results --clean -o allure-report && allure open allure-report",
+    "clean"    : "rimraf allure-results allure-report test-results playwright-report"
+  }
+
+Step 10: Run tests
+  npx playwright test                         -- run all tests (headless)
+  npx playwright test --headed                -- run with browser visible
+  npx playwright test --ui                    -- open Playwright UI mode
+  npx playwright test tests/TC001_LoginTest.spec.ts  -- run a single file
+  npx playwright test --grep "login"          -- run tests matching a pattern
+  npx playwright test --project=chromium      -- run only on a specific browser
+  npx playwright test --retries=2             -- override retry count from CLI
+
+Step 11: Generate and view reports
+  npx allure generate allure-results --clean -o allure-report
+    - Converts raw Allure JSON results into a static HTML report.
+
+  npx allure open allure-report
+    - Opens the generated report in the default browser.
+
+  npx playwright show-report
+    - Opens the built-in Playwright HTML report (playwright-report/).
+
+Step 12: Debug helpers
+  npx playwright codegen https://your-app-url.com
+    - Launches the Playwright inspector and records user actions as test code.
+
+  npx playwright test --debug
+    - Runs tests in debug/step-through mode with the Playwright inspector.
+
+  PWDEBUG=1 npx playwright test          (Linux/Mac)
+  set PWDEBUG=1 && npx playwright test   (Windows CMD)
+  $env:PWDEBUG=1; npx playwright test    (Windows PowerShell)
+
+Step 13: Update / audit packages
+  npm outdated                    -- list packages with newer versions available
+  npm update                      -- update all packages within semver range
+  npm audit                       -- show known vulnerabilities
+  npm audit fix                   -- auto-fix compatible vulnerability patches
+  npm audit fix --force           -- force-fix including breaking version bumps (use carefully)
+
+Step 14: Useful one-liners
+  npx playwright --version        -- print installed Playwright version
+  npx playwright test --list      -- list all discovered test cases without running them
+  npx tsc --noEmit                -- type-check all TypeScript files without emitting output
+
+---
+
+=======================================================================================================================
+Recommended Project Folder Structure
+--------------------------------------
+
+project-root/
+│
+├── tests/                        ← all .spec.ts test files (TC001_LoginTest.spec.ts …)
+├── pageObjects/                  ← Page Object classes (JS)
+├── pageObjects_ts/               ← Page Object classes (TypeScript)
+│   ├── BasePage.ts
+│   ├── LoginPage.ts
+│   └── ApprovalMatrixPage.ts
+├── utils/                        ← shared helper utilities (JS)
+├── utils_ts/                     ← shared helper utilities (TypeScript)
+│   ├── Logger.ts
+│   ├── apiLogin.ts
+│   └── baseFixtures.ts
+├── fixtures/                     ← custom Playwright fixtures (if separated)
+├── config/
+│   └── config.ts                 ← environment-driven test data and settings
+├── globalSetup.ts                ← runs once before all tests
+├── globalTeardown.ts             ← runs once after all tests
+├── playwright.config.ts          ← Playwright runner configuration
+├── tsconfig.json                 ← TypeScript compiler settings
+├── .env                          ← local environment variables (never commit)
+├── .env.example                  ← committed template showing required keys
+├── .gitignore                    ← excludes node_modules, reports, .env etc.
+├── package.json
+├── allure-results/               ← raw Allure JSON (generated, gitignored)
+├── allure-report/                ← final Allure HTML (generated, gitignored)
+├── playwright-report/            ← built-in HTML report (generated, gitignored)
+├── test-results/                 ← trace/video/screenshot artifacts (gitignored)
+└── Screenshots/                  ← manual or on-failure screenshots
+
+---
+
+=======================================================================================================================
+playwright.config.ts – Annotated Template
+-------------------------------------------
+
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  // Directory where test files are located
+  testDir: './tests',
+
+  // Pattern to match test files
+  testMatch: '**/*.spec.ts',
+
+  // Maximum time one test can run (ms)
+  timeout: 60_000,
+
+  // Expect (assertion) timeout per assertion
+  expect: { timeout: 10_000 },
+
+  // Number of retries on failure (0 = no retry)
+  retries: 3,
+
+  // Number of parallel workers (1 = sequential)
+  workers: 1,
+
+  // Fail the build on CI if any test.only() was accidentally left in
+  forbidOnly: !!process.env.CI,
+
+  // Reporters: list (console), allure, built-in HTML
+  reporter: [
+    ['list'],
+    ['allure-playwright', { outputFolder: 'allure-results' }],
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
+  ],
+
+  // Shared settings applied to all projects
+  use: {
+    baseURL: process.env.BASE_URL || 'https://your-app.example.com',
+    headless: true,                  // set false for local debugging
+    viewport: { width: 1280, height: 720 },
+    ignoreHTTPSErrors: true,         // useful for self-signed certs in test envs
+    screenshot: 'only-on-failure',   // 'on' | 'off' | 'only-on-failure'
+    video: 'retain-on-failure',      // 'on' | 'off' | 'retain-on-failure'
+    trace: 'retain-on-failure',      // 'on' | 'off' | 'retain-on-failure'
+    actionTimeout: 15_000,           // timeout per action (click, fill, etc.)
+    navigationTimeout: 30_000,       // timeout for page.goto() etc.
+  },
+
+  // Global setup / teardown hooks
+  globalSetup: './globalSetup.ts',
+  globalTeardown: './globalTeardown.ts',
+
+  // Project definitions (one per browser / environment)
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox',  use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit',   use: { ...devices['Desktop Safari'] } },
+  ],
+});
+
+---
+
+=======================================================================================================================
+tsconfig.json – Recommended Settings for Playwright + TypeScript
+-----------------------------------------------------------------
+
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020", "DOM"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@pageObjects/*": ["pageObjects_ts/*"],
+      "@utils/*":       ["utils_ts/*"],
+      "@config/*":      ["config/*"]
+    }
+  },
+  "include": [
+    "tests/**/*.ts",
+    "pageObjects_ts/**/*.ts",
+    "utils_ts/**/*.ts",
+    "config/**/*.ts",
+    "*.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}
+
+Note: paths aliases require ts-node/esm or tsconfig-paths at runtime. Without them
+      keep the alias section and use relative imports during early development.
+
+---
+
+=======================================================================================================================
+Environment Variables & .env File Setup
+-----------------------------------------
+
+Why use .env?
+- Keeps credentials and environment-specific URLs out of source code.
+- Allows running the same suite against DEV / QA / PROD by swapping one file.
+
+.env (never commit – add to .gitignore)
+  BASE_URL=https://dev.your-app.com
+  USERNAME=testuser@example.com
+  PASSWORD=Secret123!
+  APPROVER_USERNAME=approver@example.com
+  APPROVER_PASSWORD=Approve456!
+  TIMEOUT_MS=60000
+
+.env.example (commit this as a template)
+  BASE_URL=
+  USERNAME=
+  PASSWORD=
+  APPROVER_USERNAME=
+  APPROVER_PASSWORD=
+  TIMEOUT_MS=
+
+Loading .env in config.ts:
+  import * as dotenv from 'dotenv';
+  dotenv.config();                    // reads .env from project root
+
+  export const config = {
+    baseUrl: process.env.BASE_URL!,
+    username: process.env.USERNAME!,
+    password: process.env.PASSWORD!,
+    approverUsername: process.env.APPROVER_USERNAME!,
+    approverPassword: process.env.APPROVER_PASSWORD!,
+  };
+
+Overriding at runtime (no file change needed):
+  Windows PowerShell:
+    $env:BASE_URL="https://qa.your-app.com"; npx playwright test
+
+  Linux/Mac:
+    BASE_URL=https://qa.your-app.com npx playwright test
+
+  Via cross-env in npm scripts:
+    "test:qa": "cross-env BASE_URL=https://qa.your-app.com npx playwright test"
+
+---
+
+=======================================================================================================================
+.gitignore – Recommended for Playwright Projects
+-------------------------------------------------
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment secrets
+.env
+.env.local
+
+# Playwright generated artifacts
+test-results/
+playwright-report/
+allure-results/
+allure-report/
+my-allure-report/
+
+# Screenshots captured during tests
+Screenshots/
+
+# Playwright state files
+state.json
+storage-state.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/settings.json
+*.suo
+*.ntvs*
+
+---
+
+=======================================================================================================================
+Locator Strategy & Best Practices
+-----------------------------------
+
+Priority order (most to least resilient):
+
+1. Role-based (most resilient – semantically meaningful)
+   page.getByRole('button', { name: 'Submit' })
+   page.getByRole('textbox', { name: 'Username' })
+   page.getByRole('link',    { name: 'Dashboard' })
+
+2. Label-associated inputs
+   page.getByLabel('Email Address')
+
+3. Placeholder text
+   page.getByPlaceholder('Search...')
+
+4. Visible text
+   page.getByText('Approval Matrix')
+   page.getByText('Approval Matrix', { exact: true })   ← exact match
+
+5. Test ID (custom data attribute – most stable in controlled codebases)
+   page.getByTestId('submit-btn')                       ← requires data-testid="submit-btn" in HTML
+
+6. Title attribute
+   page.locator('[title="Open Menu"]')                  ← used for Mendix status fields
+
+7. CSS / XPath (last resort – brittle)
+   page.locator('.mx-grid-row >> nth=2')
+   page.locator('//button[contains(text(),"Save")]')
+
+Scoping locators (reduces false matches):
+   const modal = page.locator('.modal-dialog');
+   await modal.getByRole('button', { name: 'Confirm' }).click();
+
+Filtering by visibility (critical for Mendix duplicate controls):
+   page.locator('.mx-textbox').filter({ hasText: 'Request ID' }).nth(0)
+   page.locator('button', { has: page.locator(':visible') })
+
+Chaining locators:
+   page.locator('table').locator('tr').filter({ hasText: 'Pending' }).locator('td').nth(2)
+
+Waiting for a locator to be ready:
+   await expect(locator).toBeVisible({ timeout: 10_000 });
+   await locator.waitFor({ state: 'visible' });
+
+---
+
+=======================================================================================================================
+Common Playwright Assertions Reference
+----------------------------------------
+
+Import:
+  import { expect } from '@playwright/test';
+
+Visibility:
+  await expect(locator).toBeVisible();
+  await expect(locator).toBeHidden();
+
+Text content:
+  await expect(locator).toHaveText('Expected text');
+  await expect(locator).toContainText('partial text');
+  await expect(locator).toHaveText(/regex pattern/);
+
+Input value:
+  await expect(locator).toHaveValue('input value');
+  await expect(locator).toBeEmpty();                    ← input is blank
+
+Attribute:
+  await expect(locator).toHaveAttribute('href', '/dashboard');
+  await expect(locator).toHaveAttribute('class', /active/);
+
+Count:
+  await expect(locator).toHaveCount(5);
+
+State:
+  await expect(locator).toBeEnabled();
+  await expect(locator).toBeDisabled();
+  await expect(locator).toBeChecked();
+  await expect(locator).not.toBeChecked();
+
+URL / Title:
+  await expect(page).toHaveURL('https://app.com/dashboard');
+  await expect(page).toHaveURL(/\/dashboard/);
+  await expect(page).toHaveTitle('Dashboard');
+
+Soft assertions (do not stop test on failure – collect all failures):
+  await expect.soft(locator).toBeVisible();
+  await expect.soft(locator).toHaveText('Status: Approved');
+  // test continues even if above fails; final summary shows all soft failures
+
+Custom timeout override per assertion:
+  await expect(locator).toBeVisible({ timeout: 20_000 });
+
+---
+
+=======================================================================================================================
+Common Playwright Patterns
+----------------------------
+
+1. Handling Alerts / Dialogs
+   page.on('dialog', async dialog => {
+     console.log(dialog.message());
+     await dialog.accept();             // or dialog.dismiss()
+   });
+   await page.locator('#delete-btn').click();
+
+2. File Upload
+   await page.locator('input[type="file"]').setInputFiles('./data/MassRequestUpload.xlsx');
+   // For hidden file inputs use:
+   const [fileChooser] = await Promise.all([
+     page.waitForEvent('filechooser'),
+     page.locator('#upload-trigger').click(),
+   ]);
+   await fileChooser.setFiles('./data/MassRequestUpload.xlsx');
+
+3. New Tab / Popup Handling
+   const [newPage] = await Promise.all([
+     page.context().waitForEvent('page'),
+     page.locator('#open-link').click(),
+   ]);
+   await newPage.waitForLoadState();
+   await expect(newPage).toHaveTitle('New Tab Title');
+
+4. iFrame Handling
+   const frame = page.frameLocator('#my-iframe');
+   await frame.locator('#submit').click();
+   await expect(frame.locator('.success-msg')).toBeVisible();
+
+5. Network Interception / Mocking
+   // Block images to speed up tests
+   await page.route('**/*.{png,jpg,jpeg,gif}', route => route.abort());
+
+   // Mock an API response
+   await page.route('**/api/status', async route => {
+     await route.fulfill({
+       status: 200,
+       contentType: 'application/json',
+       body: JSON.stringify({ status: 'Approved' }),
+     });
+   });
+
+6. Waiting Strategies (prefer these over waitForTimeout)
+   await page.waitForLoadState('networkidle');        ← wait until no network activity
+   await page.waitForLoadState('domcontentloaded');
+   await page.waitForSelector('.spinner', { state: 'hidden' });   ← wait for spinner to disappear
+   await page.waitForResponse(resp => resp.url().includes('/api/save') && resp.status() === 200);
+   await page.waitForFunction(() => document.title.includes('Dashboard'));
+
+7. Screenshots (manual)
+   await page.screenshot({ path: 'Screenshots/failure.png', fullPage: true });
+   await locator.screenshot({ path: 'Screenshots/element.png' });
+
+8. Keyboard & Mouse Actions
+   await page.keyboard.press('Enter');
+   await page.keyboard.type('Hello World');
+   await page.mouse.move(100, 200);
+   await page.mouse.click(100, 200);
+   await locator.press('Tab');
+   await locator.press('Escape');
+
+9. Drag and Drop
+   await page.dragAndDrop('#source', '#target');
+
+10. Evaluate JavaScript in Browser Context
+    const title = await page.evaluate(() => document.title);
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const value = await locator.evaluate(el => el.getAttribute('data-status'));
+
+11. Storage State (save/restore login session)
+    // Save after login:
+    await page.context().storageState({ path: 'state.json' });
+
+    // Reuse in playwright.config.ts:
+    use: { storageState: 'state.json' }
+
+    // Or in a fixture:
+    const context = await browser.newContext({ storageState: 'state.json' });
+
+---
+
+=======================================================================================================================
+CI/CD Integration – GitHub Actions Example
+--------------------------------------------
+
+File: .github/workflows/playwright.yml
+
+name: Playwright Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:                     # allows manual trigger from GitHub UI
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci                       # uses package-lock.json (reproducible)
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run Playwright tests
+        run: npx playwright test
+        env:
+          BASE_URL:          ${{ secrets.BASE_URL }}
+          USERNAME:          ${{ secrets.USERNAME }}
+          PASSWORD:          ${{ secrets.PASSWORD }}
+          APPROVER_USERNAME: ${{ secrets.APPROVER_USERNAME }}
+          APPROVER_PASSWORD: ${{ secrets.APPROVER_PASSWORD }}
+
+      - name: Upload Playwright HTML report
+        if: always()                      # upload even on failure
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results
+          path: allure-results/
+          retention-days: 14
+
+      - name: Upload test traces / screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 7
+
+Key CI best practices:
+- Use npm ci instead of npm install (locked, faster, no accidental upgrades).
+- Always store credentials in GitHub Secrets, never in workflow YAML.
+- Use if: always() on report uploads so artifacts are preserved on failure.
+- npx playwright install --with-deps installs OS libraries needed on Linux.
+- Set forbidOnly: !!process.env.CI in playwright.config.ts to catch rogue test.only() calls.
+
+---
+
+=======================================================================================================================
 API Testing Set up
 --------------------
 
-1. Do normal login and try to find login API from network tab with POST call, from there extract the token to bypass Login
-2. 
+Overview:
+- API tests validate the backend independently of the UI.
+- In Playwright, use the APIRequestContext (built-in) for HTTP calls.
+- No browser is launched; tests run faster and are more stable.
+
+Step 1: Extract the auth token
+  1. Open the application in Chrome DevTools → Network tab.
+  2. Perform a manual login.
+  3. Look for a POST call to /api/auth/login (or similar endpoint).
+  4. In the response body, locate the token field (JWT or session token).
+  5. Note the request payload (username, password fields) for automation.
+
+Step 2: Obtain token programmatically in Playwright
+  import { test, expect, request } from '@playwright/test';
+
+  test('get auth token', async () => {
+    const apiContext = await request.newContext({
+      baseURL: process.env.BASE_URL,
+      extraHTTPHeaders: { 'Content-Type': 'application/json' },
+    });
+
+    const response = await apiContext.post('/api/auth/login', {
+      data: {
+        username: process.env.USERNAME,
+        password: process.env.PASSWORD,
+      },
+    });
+
+    expect(response.status()).toBe(200);
+    const body = await response.json();
+    const token = body.token;           // adjust key to match actual response
+    console.log('Token:', token);
+    await apiContext.dispose();
+  });
+
+Step 3: Use the token in subsequent API calls
+  const response = await apiContext.get('/api/requests', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(response.status()).toBe(200);
+  const data = await response.json();
+
+Step 4: Bypass UI login using storage state
+  // apiLogin.ts utility
+  import { request } from '@playwright/test';
+
+  export async function getStorageState(outputPath: string): Promise<void> {
+    const context = await request.newContext({ baseURL: process.env.BASE_URL });
+    await context.post('/api/auth/login', {
+      data: { username: process.env.USERNAME, password: process.env.PASSWORD },
+    });
+    await context.storageState({ path: outputPath });
+    await context.dispose();
+  }
+
+  // In globalSetup.ts:
+  import { getStorageState } from './utils_ts/apiLogin';
+  await getStorageState('state.json');
+
+  // In playwright.config.ts use block:
+  use: { storageState: 'state.json' }
+
+Step 5: Common API assertion patterns
+  // Status codes
+  expect(response.status()).toBe(200);
+  expect(response.ok()).toBeTruthy();        // true for 2xx codes
+
+  // Response body
+  const body = await response.json();
+  expect(body.status).toBe('Approved');
+  expect(body.items).toHaveLength(5);
+  expect(body).toMatchObject({ id: expect.any(Number), name: 'Test Request' });
+
+  // Response headers
+  expect(response.headers()['content-type']).toContain('application/json');
+
+Step 6: API test file structure example
+  tests/
+  └── api/
+      ├── auth.api.spec.ts       ← login, token validation
+      ├── requests.api.spec.ts   ← CRUD for request records
+      └── approvals.api.spec.ts  ← approval workflow endpoints
+
+  Run only API tests:
+    npx playwright test tests/api/
+
+---
+
+
+
+=======================================================================================================================
+=======================================================================================================================
+                            FRAMEWORK GENERATION BLUEPRINT (Verified from this project)
+                            Use this section ALONE to recreate the framework end-to-end.
+=======================================================================================================================
+=======================================================================================================================
+
+Section A. Project Identity
+---------------------------
+- Name              : mendixcct-playwright
+- Test Tool         : Playwright Test Runner (TypeScript)
+- Language          : TypeScript (target ES2022, module commonjs)
+- Reporting         : Allure + Playwright HTML + console list
+- Logging           : Winston (console + rotating file)
+- Application Type  : Mendix-based web application (jQuery-driven UI)
+- Auth              : UI login via fixtures (API login utility provided but optional)
+- Concurrency       : Sequential (workers = 1, fullyParallel = false)
+- Retries           : 3
+- Browsers          : chromium (default), edge (msedge channel)
+
+
+Section B. Exact Dependency Versions (from package.json)
+--------------------------------------------------------
+devDependencies:
+  @playwright/test       ^1.49.0
+  @types/node            ^25.5.2
+  allure-commandline     ^2.30.0
+  allure-playwright      ^3.0.0
+  dotenv                 ^16.4.5
+  typescript             ^5.6.0
+  winston                ^3.14.0
+
+Install all in one go:
+  npm init -y
+  npm install --save-dev @playwright/test@^1.49.0 @types/node@^25.5.2 allure-commandline@^2.30.0 allure-playwright@^3.0.0 dotenv@^16.4.5 typescript@^5.6.0 winston@^3.14.0
+  npm install --save-dev rimraf
+  npx playwright install
+
+
+Section C. Final Folder Layout (must match)
+-------------------------------------------
+project-root/
+├── .env                          (git-ignored; created from .env.example)
+├── .env.example
+├── .gitignore
+├── package.json
+├── playwright.config.ts
+├── tsconfig.json
+├── allure-results/               (generated)
+├── allure-report/                (generated)
+├── playwright-report/            (generated)
+├── test-results/                 (generated)
+├── logs/                         (generated)
+├── downloads/                    (generated)
+└── src/
+    ├── config/
+    │   ├── config.ts
+    │   ├── globalSetup.ts
+    │   └── globalTeardown.ts
+    ├── fixtures/
+    │   └── baseFixtures.ts
+    ├── pages/
+    │   ├── BasePage.ts
+    │   ├── LoginPage.ts
+    │   └── <DomainPage>.ts ...     (one per screen)
+    ├── tests/
+    │   ├── TC001_LoginTest.spec.ts
+    │   └── TC0NN_<Feature>Test.spec.ts ...
+    ├── test-data/                 (xlsx, csv, json fixtures)
+    └── utils/
+        ├── Logger.ts
+        └── apiLogin.ts
+
+
+Section D. Verbatim File Templates (copy these to recreate the framework)
+=========================================================================
+
+------------ FILE: package.json ------------
+{
+  "name": "mendixcct-playwright",
+  "version": "1.0.0",
+  "description": "Playwright Hybrid Framework with POM",
+  "scripts": {
+    "pretest": "rimraf allure-results allure-report",
+    "test": "npx playwright test",
+    "posttest": "allure generate allure-results --clean -o allure-report && allure open allure-report",
+    "test:headed": "rimraf allure-results allure-report && npx playwright test --headed & npm run allure:report",
+    "test:debug": "npx playwright test --debug",
+    "test:sanity": "rimraf allure-results allure-report && npx playwright test --grep @Sanity & npm run allure:report",
+    "test:regression": "rimraf allure-results allure-report && npx playwright test --grep @Regression & npm run allure:report",
+    "test:master": "rimraf allure-results allure-report && npx playwright test --grep @Master & npm run allure:report",
+    "test:failed": "rimraf allure-results allure-report && npx playwright test --last-failed & npm run allure:report",
+    "test:single": "npx playwright test --grep",
+    "report": "npx playwright show-report playwright-report",
+    "allure:generate": "allure generate allure-results --clean -o allure-report",
+    "allure:open": "allure open allure-report",
+    "allure:report": "allure generate allure-results --clean -o allure-report && allure open allure-report",
+    "lint": "npx tsc --noEmit",
+    "clean": "rimraf test-results allure-results allure-report playwright-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^25.5.2",
+    "allure-commandline": "^2.30.0",
+    "allure-playwright": "^3.0.0",
+    "dotenv": "^16.4.5",
+    "typescript": "^5.6.0",
+    "winston": "^3.14.0"
+  }
+}
+
+------------ FILE: tsconfig.json ------------
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "paths": {
+      "@pages/*":    ["src/pages/*"],
+      "@utils/*":    ["src/utils/*"],
+      "@config/*":   ["src/config/*"],
+      "@fixtures/*": ["src/fixtures/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "playwright.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
+
+------------ FILE: playwright.config.ts ------------
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+import { defineConfig, devices } from '@playwright/test';
+
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+
+export default defineConfig({
+  testDir: './src/tests',
+  testMatch: '**/*.spec.ts',
+
+  globalSetup:    './src/config/globalSetup.ts',
+  globalTeardown: './src/config/globalTeardown.ts',
+
+  timeout: 120000,
+  expect: { timeout: parseInt(process.env.EXPECT_TIMEOUT || '10000') },
+
+  fullyParallel: false,
+  workers: 1,
+
+  forbidOnly: !!process.env.CI,
+  retries: 3,
+
+  reporter: [
+    ['list'],
+    ['allure-playwright'],
+    ['html', { open: 'never', outputFolder: 'playwright-report' }],
+  ],
+
+  use: {
+    baseURL: process.env.APP_URL || 'https://your-app.example.com/login.html',
+    headless: process.env.HEADLESS === 'true',
+    navigationTimeout: parseInt(process.env.NAVIGATION_TIMEOUT || '60000'),
+    actionTimeout:     parseInt(process.env.DEFAULT_TIMEOUT    || '30000'),
+    screenshot: 'only-on-failure',
+    video:      'retain-on-failure',
+    trace:      'retain-on-failure',
+    ignoreHTTPSErrors: true,
+  },
+
+  outputDir: 'test-results',
+
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: null,
+        deviceScaleFactor: undefined,
+        launchOptions: { args: ['--disable-notifications', '--start-maximized'] },
+      },
+    },
+    {
+      name: 'edge',
+      use: {
+        ...devices['Desktop Edge'],
+        channel: 'msedge',
+        viewport: { width: 1920, height: 1080 },
+      },
+    },
+  ],
+});
+
+------------ FILE: .gitignore ------------
+node_modules/
+dist/
+test-results/
+allure-results/
+allure-report/
+playwright-report/
+logs/
+downloads/
+.env
+.env.local
+state.json
+storage-state.json
+.DS_Store
+Thumbs.db
+
+------------ FILE: .env.example ------------
+# App
+APP_URL=https://your-app.example.com/login.html
+EMAIL=submitter@example.com
+EMAIL_APPROVER=approver@example.com
+PASSWORD=ChangeMe!
+
+# API login (optional)
+API_LOGIN_URL=https://your-app.example.com/api/login
+USERNAME=
+USERNAME_APPROVER=
+API_PASSWORD=
+
+# Browser
+BROWSER=chromium
+HEADLESS=false
+
+# Execution
+EXECUTION_ENV=local
+GRID_URL=http://localhost:4444/wd/hub
+
+# Timeouts (ms)
+DEFAULT_TIMEOUT=30000
+NAVIGATION_TIMEOUT=60000
+EXPECT_TIMEOUT=10000
+
+# Downloads
+DOWNLOAD_LOCATION=project
+DOWNLOAD_FOLDER=downloads
+SCREENSHOT_ON_FAILURE=true
+
+# Domain test data — naming convention:
+#   <feature>_FIELD                  → CREATE-scenario value
+#   E_<feature>_FIELD                → EDIT-scenario new value
+#   BE_<feature>_FIELD               → BEFORE-EDIT row selector (locate row to edit)
+#   D_<feature>_FIELD                → DELETE-scenario row selector
+# Example block:
+ALM_REGION=APAC
+ALM_COUNTRY=India
+ALM_REQUEST_TYPE=MI
+ALM_LEVEL1=yes
+ALM_LEVEL2=yes
+ALM_FINANCE_APPROVER=no
+ALM_CONFLICT_CHECK=yes
+ALM_ACTIVE=yes
+E_ALM_LEVEL1=no
+E_ALM_LEVEL2=yes
+E_ALM_ACTIVE=yes
+D_ALM_REGION=EMEA
+D_ALM_COUNTRY=United Kingdom
+
+------------ FILE: src/config/config.ts ------------
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+export const config = {
+  // API Login
+  apiLoginUrl:      process.env.API_LOGIN_URL      || '',
+  username:         process.env.USERNAME           || '',
+  usernameApprover: process.env.USERNAME_APPROVER  || '',
+  apiPassword:      process.env.API_PASSWORD       || '',
+
+  // Application
+  appUrl:         process.env.APP_URL         || '',
+  email:          process.env.EMAIL           || '',
+  emailApprover:  process.env.EMAIL_APPROVER  || '',
+  password:       process.env.PASSWORD        || '',
+
+  // Browser
+  browser:  process.env.BROWSER  || 'chromium',
+  headless: process.env.HEADLESS === 'true',
+
+  // Execution
+  executionEnv: process.env.EXECUTION_ENV || 'local',
+  gridUrl:      process.env.GRID_URL      || 'http://localhost:4444/wd/hub',
+
+  // Timeouts
+  defaultTimeout:     parseInt(process.env.DEFAULT_TIMEOUT     || '30000'),
+  navigationTimeout:  parseInt(process.env.NAVIGATION_TIMEOUT  || '60000'),
+  expectTimeout:      parseInt(process.env.EXPECT_TIMEOUT      || '10000'),
+
+  // Downloads / Artefacts
+  downloadLocation:    process.env.DOWNLOAD_LOCATION    || 'project',
+  downloadFolder:      process.env.DOWNLOAD_FOLDER      || 'downloads',
+  screenshotOnFailure: process.env.SCREENSHOT_ON_FAILURE === 'true',
+
+  // ───────── Domain test data ─────────
+  // Use the prefix convention:
+  //   <feat>X     → CREATE
+  //   eFeatX      → EDIT (new value)
+  //   beFeatX     → BEFORE-EDIT (locate existing row)
+  //   dFeatX      → DELETE (locate row to delete)
+  // Example:
+  almRegion:           process.env.ALM_REGION           || 'APAC',
+  almCountry:          process.env.ALM_COUNTRY          || 'India',
+  almRequestType:      process.env.ALM_REQUEST_TYPE     || 'MI',
+  almLevel1:           process.env.ALM_LEVEL1           || 'yes',
+  almLevel2:           process.env.ALM_LEVEL2           || 'yes',
+  almFinanceApprover:  process.env.ALM_FINANCE_APPROVER || 'no',
+  almConflictCheck:    process.env.ALM_CONFLICT_CHECK   || 'yes',
+  almActive:           process.env.ALM_ACTIVE           || 'yes',
+  eAlmLevel1:          process.env.E_ALM_LEVEL1         || 'yes',
+  eAlmLevel2:          process.env.E_ALM_LEVEL2         || 'yes',
+  eAlmActive:          process.env.E_ALM_ACTIVE         || 'yes',
+  dAlmRegion:          process.env.D_ALM_REGION         || '',
+  dAlmCountry:         process.env.D_ALM_COUNTRY        || '',
+  // ... add additional feature blocks following the same pattern.
+};
+
+------------ FILE: src/config/globalSetup.ts ------------
+import fs from 'fs';
+import path from 'path';
+
+export default function globalSetup() {
+  const allureResults = path.resolve('allure-results');
+  const allureReport  = path.resolve('allure-report');
+
+  if (fs.existsSync(allureResults)) fs.rmSync(allureResults, { recursive: true, force: true });
+  if (fs.existsSync(allureReport))  fs.rmSync(allureReport,  { recursive: true, force: true });
+}
+
+------------ FILE: src/config/globalTeardown.ts ------------
+import { execSync } from 'child_process';
+
+export default function globalTeardown() {
+  try {
+    console.log('\n📊 Generating Allure report...');
+    execSync('allure generate allure-results --clean -o allure-report', { stdio: 'inherit' });
+
+    console.log('🌐 Opening Allure report in browser...');
+    execSync('allure open allure-report', { stdio: 'inherit' });
+  } catch (e) {
+    console.error('⚠️ Allure report generation/open failed:', (e as Error).message);
+  }
+}
+
+------------ FILE: src/utils/Logger.ts ------------
+import { createLogger, format, transports, Logger } from 'winston';
+import * as path from 'path';
+import * as fs from 'fs';
+
+const logDir = path.resolve(__dirname, '../../logs');
+if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+
+const logFormat = format.printf(({ level, message, timestamp, label }) => {
+  return `${timestamp} [${label || 'TEST'}] ${level.toUpperCase()}: ${message}`;
+});
+
+const loggerCache = new Map<string, Logger>();
+
+export function getLogger(label: string): Logger {
+  if (loggerCache.has(label)) return loggerCache.get(label)!;
+
+  const logger = createLogger({
+    level: 'info',
+    format: format.combine(
+      format.label({ label }),
+      format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+      logFormat
+    ),
+    transports: [
+      new transports.Console({
+        format: format.combine(
+          format.colorize(),
+          format.label({ label }),
+          format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+          logFormat
+        ),
+      }),
+      new transports.File({
+        filename: path.join(logDir, 'test-execution.log'),
+        maxsize: 5 * 1024 * 1024, // 5 MB
+        maxFiles: 5,
+      }),
+    ],
+  });
+
+  loggerCache.set(label, logger);
+  return logger;
+}
+
+------------ FILE: src/utils/apiLogin.ts ------------
+import { request, APIRequestContext, BrowserContext } from '@playwright/test';
+import { config } from '../config/config';
+
+export async function apiLoginAndSaveState(storageStatePath: string): Promise<void> {
+  const apiContext: APIRequestContext = await request.newContext();
+
+  const loginResponse = await apiContext.post(config.apiLoginUrl, {
+    data: {
+      username:         config.username,
+      usernameApprover: config.usernameApprover,
+      password:         config.apiPassword,
+    },
+  });
+
+  if (!loginResponse.ok()) {
+    throw new Error(`Login API failed: ${loginResponse.status()} ${loginResponse.statusText()}`);
+  }
+
+  await apiContext.storageState({ path: storageStatePath });
+  await apiContext.dispose();
+}
+
+export async function launchAuthenticatedContext(
+  browser: any,
+  storageStatePath: string
+): Promise<BrowserContext> {
+  return await browser.newContext({ storageState: storageStatePath });
+}
+
+------------ FILE: src/fixtures/baseFixtures.ts ------------
+import { test as base, Page } from '@playwright/test';
+import { LoginPage } from '../pages/LoginPage';
+import { config } from '../config/config';
+import { getLogger } from '../utils/Logger';
+import * as path from 'path';
+import * as fs from 'fs';
+
+const logger = getLogger('BaseFixture');
+
+type TestFixtures = {
+  loginPage: LoginPage;
+  authenticatedPage: Page;
+  approverAuthenticatedPage: Page;
+};
+
+async function performLogin(page: Page, email: string, password: string, label = ''): Promise<void> {
+  const prefix = label ? `[${label}] ` : '';
+  logger.info(`${prefix}Navigating to: ${config.appUrl}`);
+  await page.goto(config.appUrl, { waitUntil: 'domcontentloaded' });
+
+  const loginPage = new LoginPage(page);
+  await loginPage.setEmail(email);
+  await loginPage.setPassword(password);
+  await loginPage.clickLogin();
+  await loginPage.clickOKProceed();
+  await loginPage.waitForPageReady();
+  await loginPage.toggleMenuIcon();
+  logger.info(`${prefix}Login completed`);
+}
+
+export const test = base.extend<TestFixtures>({
+  authenticatedPage: async ({ page }, use) => {
+    ensureDownloadDir();
+    await performLogin(page, config.email, config.password);
+    await use(page);
+  },
+
+  loginPage: async ({ authenticatedPage }, use) => {
+    await use(new LoginPage(authenticatedPage));
+  },
+
+  approverAuthenticatedPage: async ({ page }, use) => {
+    await performLogin(page, config.emailApprover, config.password, 'Approver');
+    await use(page);
+  },
+});
+
+export { expect } from '@playwright/test';
+
+function ensureDownloadDir(): void {
+  if (config.downloadLocation === 'project') {
+    const downloadPath = path.resolve(__dirname, '../../', config.downloadFolder);
+    if (!fs.existsSync(downloadPath)) fs.mkdirSync(downloadPath, { recursive: true });
+  }
+}
+
+export function randomString(length = 5): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
+export function randomNumber(length = 10): string {
+  return Array.from({ length }, () => Math.floor(Math.random() * 10)).join('');
+}
+export function randomAlphaNumeric(): string {
+  return `${randomString(3)}@${randomNumber(3)}`;
+}
+
+------------ FILE: src/pages/BasePage.ts ------------
+import { Page, Locator, expect } from '@playwright/test';
+
+export const TIMEOUTS = {
+  action:       8000,
+  visible:     10000,
+  pageReady:   30000,
+  dialog:       5000,
+  pollInterval:  300,
+  gridSearch:  10000,
+} as const;
+
+export class BasePage {
+  protected page: Page;
+  constructor(page: Page) { this.page = page; }
+
+  // ── Click helpers ──
+  protected async safeClick(locator: Locator, timeout = TIMEOUTS.action): Promise<void> {
+    try {
+      await locator.waitFor({ state: 'visible', timeout });
+      await locator.click({ timeout });
+    } catch {
+      try {
+        const handle = await locator.elementHandle({ timeout: 5000 });
+        if (handle) {
+          await this.page.evaluate((el) => {
+            el.scrollIntoView({ block: 'center' });
+            (el as HTMLElement).click();
+          }, handle);
+        }
+      } catch { /* element not found */ }
+    }
+  }
+
+  // ── Wait helpers ──
+  protected async waitForVisible(locator: Locator, timeout = TIMEOUTS.visible) {
+    await locator.waitFor({ state: 'visible', timeout });
+  }
+  protected async waitForHidden(locator: Locator, timeout = TIMEOUTS.visible) {
+    await locator.waitFor({ state: 'hidden', timeout });
+  }
+  protected async waitForEnabled(locator: Locator, timeout = TIMEOUTS.visible) {
+    await locator.waitFor({ state: 'visible', timeout });
+    await expect(locator).toBeEnabled({ timeout });
+  }
+
+  /** Document ready + jQuery idle (Mendix-friendly). */
+  async waitForPageReady(timeout = TIMEOUTS.pageReady): Promise<void> {
+    await this.page.waitForFunction(
+      () => {
+        const jqActive = (window as any).jQuery ? (window as any).jQuery.active : 0;
+        return document.readyState === 'complete' && jqActive === 0;
+      },
+      { timeout, polling: 500 }
+    );
+  }
+
+  async waitUntilTitleIs(expectedTitle: string, timeout = 15000): Promise<void> {
+    await this.page.waitForFunction(
+      (title: string) => document.title === title,
+      expectedTitle,
+      { timeout, polling: 500 }
+    );
+  }
+
+  protected async waitFor(ms: number) { await this.page.waitForTimeout(ms); }
+
+  // ── Mendix dialog helpers ──
+  private get mxDialogContainer()    { return this.page.locator('.mx-dialog'); }
+  private get mxDialogMessage()      { return this.page.locator('.mx-dialog .modal-body p'); }
+  private get mxDialogOkButton()     { return this.page.locator('.mx-dialog .mx-dialog-footer .btn.btn-primary'); }
+  private get mxDialogCloseButton()  { return this.page.locator('.mx-dialog .mx-dialog-close'); }
+
+  async isDialogVisible(timeout = TIMEOUTS.dialog): Promise<boolean> {
+    try { await this.mxDialogContainer.first().waitFor({ state: 'visible', timeout }); return true; }
+    catch { return false; }
+  }
+  async isDialogPresentQuick(): Promise<boolean> {
+    return this.mxDialogContainer.first().isVisible().catch(() => false);
+  }
+  async getDialogMessage(): Promise<string | null> {
+    try { return await this.mxDialogMessage.first().textContent(); } catch { return null; }
+  }
+  async closeDialog(): Promise<void> {
+    try { await this.safeClick(this.mxDialogOkButton.first()); }
+    catch { try { await this.safeClick(this.mxDialogCloseButton.first()); } catch { /* none */ } }
+  }
+
+  // ── Mendix grid helpers ──
+  protected async findGridRow(
+    columnSelectors: string[],
+    matchValues: (string | null)[],
+    exact = false
+  ): Promise<number | null> {
+    const columns = columnSelectors.map(s => this.page.locator(s));
+    const counts  = await Promise.all(columns.map(c => c.count()));
+    const rowCount = Math.min(...counts);
+    if (rowCount === 0) return null;
+
+    for (let i = 0; i < rowCount; i++) {
+      let allMatch = true;
+      for (let col = 0; col < columns.length; col++) {
+        const expected = matchValues[col];
+        if (!expected) continue;
+        const cellText = ((await columns[col].nth(i).textContent()) || '').trim();
+        const ok = exact
+          ? cellText.toLowerCase() === expected.trim().toLowerCase()
+          : cellText.toLowerCase().includes(expected.trim().toLowerCase());
+        if (!ok) { allMatch = false; break; }
+      }
+      if (allMatch) return i;
+    }
+    return null;
+  }
+
+  protected async findGridRowWithWait(
+    columnSelectors: string[],
+    matchValues: (string | null)[],
+    exact = false,
+    timeout = TIMEOUTS.gridSearch
+  ): Promise<number | null> {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      const idx = await this.findGridRow(columnSelectors, matchValues, exact);
+      if (idx !== null) return idx;
+      await this.waitFor(TIMEOUTS.pollInterval);
+    }
+    return null;
+  }
+
+  protected async selectDropdownOption(dropdown: Locator, text: string): Promise<void> {
+    await dropdown.waitFor({ state: 'visible', timeout: TIMEOUTS.action });
+    const options = dropdown.locator('option');
+    const count = await options.count();
+    for (let i = 0; i < count; i++) {
+      const t = await options.nth(i).textContent();
+      if (t && t.trim().toLowerCase() === text.trim().toLowerCase()) {
+        await dropdown.selectOption({ label: t.trim() });
+        return;
+      }
+    }
+    throw new Error(`Dropdown option not found: "${text}"`);
+  }
+
+  protected async selectGridItemByName(cells: Locator, name: string, timeout = TIMEOUTS.visible): Promise<boolean> {
+    if (!name?.trim()) return false;
+    const target = name.trim().toLowerCase();
+    try { await cells.first().waitFor({ state: 'visible', timeout }); } catch { return false; }
+    const count = await cells.count();
+    for (let i = 0; i < count; i++) {
+      const text = await cells.nth(i).textContent();
+      if (text && text.trim().toLowerCase() === target) {
+        await cells.nth(i).click();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  isYes(val: string | null | undefined): boolean {
+    return (val || '').trim().toLowerCase() === 'yes';
+  }
+}
+
+------------ FILE: src/pages/LoginPage.ts ------------
+import { Page, Locator } from '@playwright/test';
+import { BasePage } from './BasePage';
+
+export class LoginPage extends BasePage {
+  private readonly usernameInput: Locator;
+  private readonly passwordInput: Locator;
+  private readonly loginButton:   Locator;
+  private readonly okProceedButton: Locator;
+  private readonly toggleMenu:    Locator;
+  private readonly logoutButton:  Locator;
+
+  constructor(page: Page) {
+    super(page);
+    this.usernameInput   = page.locator('#usernameInput');
+    this.passwordInput   = page.locator('#passwordInput');
+    this.loginButton     = page.locator('#loginButton');
+    this.okProceedButton = page.locator("button:has-text('OK Proceed')");
+    this.toggleMenu      = page.locator('#mxui_widget_SidebarToggleButton_0');
+    this.logoutButton    = page.locator("a:has-text('Logout')");
+  }
+
+  async setEmail(email: string)         { await this.usernameInput.fill(email); }
+  async setPassword(password: string)   { await this.passwordInput.fill(password); }
+  async clickLogin()                    { await this.safeClick(this.loginButton); }
+  async clickOKProceed()                { await this.safeClick(this.okProceedButton); }
+  async getLoginPageTitle()             { return await this.page.title(); }
+  async toggleMenuIcon()                { await this.safeClick(this.toggleMenu); }
+  async clickLogout()                   { await this.safeClick(this.logoutButton); }
+
+  async login(email: string, password: string): Promise<void> {
+    await this.setEmail(email);
+    await this.setPassword(password);
+    await this.clickLogin();
+    await this.clickOKProceed();
+    await this.waitForPageReady();
+    await this.toggleMenuIcon();
+  }
+}
+
+------------ TEMPLATE: src/pages/<Domain>Page.ts (skeleton for any new screen) ------------
+import { Page, Locator } from '@playwright/test';
+import { BasePage, TIMEOUTS } from './BasePage';
+
+export class <Domain>Page extends BasePage {
+  // 1. Declare locators as readonly fields
+  private readonly menuLink: Locator;
+  private readonly newButton: Locator;
+  private readonly saveButton: Locator;
+  private readonly overviewRowCells: Locator;
+
+  constructor(page: Page) {
+    super(page);
+    this.menuLink         = page.locator("a:has-text('<Menu>')");
+    this.newButton        = page.locator("button:has-text('New')");
+    this.saveButton       = page.locator("button:has-text('Save')");
+    // IMPORTANT: scope to :visible to avoid hidden duplicate Mendix tabs
+    this.overviewRowCells = page.locator(".mx-datagrid:visible td[data-column='Name']");
+  }
+
+  // 2. Navigation methods
+  async openModule()          { await this.safeClick(this.menuLink); await this.waitForPageReady(); }
+  async clickNew()            { await this.safeClick(this.newButton); await this.waitForPageReady(); }
+  async clickSave()           { await this.safeClick(this.saveButton); await this.waitForPageReady(); }
+
+  // 3. Field interactions (use BasePage helpers for resilience)
+  async setName(value: string) {
+    await this.page.locator('#nameInput').fill(value);
+  }
+
+  // 4. Grid lookups (use polling helper)
+  async findRowByName(name: string, timeout = TIMEOUTS.gridSearch): Promise<number | null> {
+    return await this.findGridRowWithWait(
+      [".mx-datagrid:visible td[data-column='Name']"],
+      [name],
+      false,
+      timeout
+    );
+  }
+}
+
+------------ TEMPLATE: src/tests/TC0NN_<Feature>Test.spec.ts ------------
+import { test, expect } from '../fixtures/baseFixtures';
+import { <Domain>Page } from '../pages/<Domain>Page';
+import { config } from '../config/config';
+import { getLogger } from '../utils/Logger';
+
+const logger = getLogger('TC0NN_<Feature>Test');
+
+test.describe('TC0NN - <Feature>', () => {
+  test('Verify <feature> @Sanity @Master', async ({ authenticatedPage }) => {
+    logger.info('***************** Starting TC0NN_<Feature>Test **********');
+    const pageObj = new <Domain>Page(authenticatedPage);
+
+    await pageObj.openModule();
+    await pageObj.clickNew();
+
+    await pageObj.setName('SampleName');
+    await pageObj.clickSave();
+
+    if (await pageObj.isDialogPresentQuick()) {
+      logger.info(`Dialog: ${await pageObj.getDialogMessage()}`);
+      await pageObj.closeDialog();
+    }
+
+    const idx = await pageObj.findRowByName('SampleName');
+    expect(idx, 'Row should appear in overview grid').not.toBeNull();
+    logger.info('***************** Finished TC0NN_<Feature>Test **********');
+  });
+});
+
+
+Section E. Mendix-Specific Engineering Rules (mandatory)
+--------------------------------------------------------
+1. Always scope locators to :visible because Mendix renders hidden duplicate
+   tables/buttons across tabs (`dojoattachpoint='gridTable'` repeats per tab).
+2. To select a row, click the <td> cell, NOT the <tr> row (Mendix often
+   ignores row clicks).
+3. Status text frequently lives in the title attribute, not visible text:
+     await locator.getAttribute('title')
+4. After every state-changing action call `waitForPageReady()` (DOM ready +
+   jQuery idle) before reading the next element.
+5. `safeClick` uses a JS-click fallback. The fallback can click hidden
+   elements — combine with visibility scoping:
+     page.locator("button:visible:text-is('Save')")
+6. Dialogs: use `isDialogPresentQuick()` for non-blocking checks and
+   `closeDialog()` to dismiss generic Mendix info/confirm dialogs.
+7. Reference selector popups need polling: use `findGridRowWithWait()`.
+
+
+Section F. Test Tagging Convention
+----------------------------------
+Add tags to test titles to allow grep-based suite selection from npm scripts:
+  test('… @Sanity @Master', …)
+Tags used in this project:
+  @Sanity      — fastest happy-path subset
+  @Regression  — broader coverage
+  @Master      — full suite gating release
+Run via:
+  npm run test:sanity
+  npm run test:regression
+  npm run test:master
+
+
+Section G. Config Naming Convention (must follow)
+-------------------------------------------------
+For each business entity (e.g. Approval Matrix → "am") define:
+  amField        → CREATE input
+  beAmField      → BEFORE-EDIT row selector (locate the row to edit)
+  eAmField       → EDIT new value
+  dAmField       → DELETE row selector
+This makes one test spec drive multiple data permutations purely via .env.
+
+
+Section H. End-to-End Bootstrap Recipe (run in this order)
+----------------------------------------------------------
+1.  mkdir <ProjectName> && cd <ProjectName>
+2.  npm init -y
+3.  npm install --save-dev @playwright/test@^1.49.0 @types/node@^25.5.2 \
+                           allure-commandline@^2.30.0 allure-playwright@^3.0.0 \
+                           dotenv@^16.4.5 typescript@^5.6.0 winston@^3.14.0 rimraf
+4.  npx playwright install
+5.  Create folders: src/{config,fixtures,pages,tests,test-data,utils}, logs, downloads
+6.  Create the files in Section D verbatim (package.json, tsconfig.json,
+    playwright.config.ts, .gitignore, .env.example).
+7.  Copy src/config/{config,globalSetup,globalTeardown}.ts.
+8.  Copy src/utils/{Logger,apiLogin}.ts.
+9.  Copy src/fixtures/baseFixtures.ts.
+10. Copy src/pages/{BasePage,LoginPage}.ts.
+11. Copy src/tests/TC001_LoginTest.spec.ts (template below).
+12. cp .env.example .env  → fill in real APP_URL, EMAIL, PASSWORD, etc.
+13. npm run lint            → must pass with zero TS errors.
+14. npm test                → TC001 should drive login and emit Allure report.
+15. For each new screen:
+    a. add a `<Domain>Page.ts` extending BasePage,
+    b. add corresponding env keys (CREATE/BE_/E_/D_) in .env + config.ts,
+    c. add `TC0NN_<Feature>Test.spec.ts` using the template,
+    d. tag with @Sanity / @Regression / @Master.
+
+------------ FILE: src/tests/TC001_LoginTest.spec.ts ------------
+import { test, expect } from '../fixtures/baseFixtures';
+import { getLogger } from '../utils/Logger';
+
+const logger = getLogger('TC001_LoginTest');
+
+test.describe('TC001 - Login Test', () => {
+  test('Verify login @Sanity @Master', async ({ authenticatedPage, loginPage }) => {
+    logger.info('***************** Starting TC001_LoginTest **********');
+
+    const expectedTitle = 'Mendix - Home Page'; // change to match your app
+    await loginPage.waitUntilTitleIs(expectedTitle);
+    expect(await loginPage.getLoginPageTitle()).toBe(expectedTitle);
+
+    await loginPage.clickLogout();
+    logger.info('***************** Finished TC001_LoginTest **********');
+  });
+});
+
+
+Section I. Verification Checklist (a fresh framework is "done" when…)
+---------------------------------------------------------------------
+[ ] `npm run lint` passes (no TypeScript errors).
+[ ] `npm test` launches the configured browsers headless and runs TC001.
+[ ] Allure report opens automatically post-run.
+[ ] `logs/test-execution.log` contains timestamped entries with TC labels.
+[ ] On a forced failure, `test-results/` contains trace.zip + video + screenshot.
+[ ] `npm run test:sanity` only runs @Sanity-tagged specs.
+[ ] A second page object can be added without modifying BasePage.
+[ ] `.env` is git-ignored and `.env.example` is committed.
+[ ] Approver-role test using `approverAuthenticatedPage` works end-to-end.
+
+=======================================================================================================================
+END OF FRAMEWORK GENERATION BLUEPRINT
+=======================================================================================================================
+
+
+=======================================================================================================================
+=======================================================================================================================
+            STEP-BY-STEP: GENERATE A NEW FRAMEWORK FOR A DIFFERENT PROJECT (Windows PowerShell)
+            Follow these commands in order. Replace <NewProjectName> and app-specific values.
+=======================================================================================================================
+=======================================================================================================================
+
+PRE-FLIGHT CHECK
+----------------
+# Verify Node.js >= 18 and npm are installed
+node --version
+npm --version
+# (Optional) verify git
+git --version
+# (Optional) verify allure CLI globally â€” not required since allure-commandline is a devDependency
+allure --version
+
+
+STEP 1 â€” Create and enter the new project folder
+------------------------------------------------
+cd "C:\path\to\your\workspace"
+mkdir <NewProjectName>
+cd <NewProjectName>
+
+
+STEP 2 â€” Initialize Git and npm
+-------------------------------
+git init
+npm init -y
+
+
+STEP 3 â€” Install all dependencies (single command)
+--------------------------------------------------
+npm install --save-dev `
+  "@playwright/test@^1.49.0" `
+  "@types/node@^25.5.2" `
+  "allure-commandline@^2.30.0" `
+  "allure-playwright@^3.0.0" `
+  "dotenv@^16.4.5" `
+  "typescript@^5.6.0" `
+  "winston@^3.14.0" `
+  rimraf
+
+# Download Playwright browser binaries
+npx playwright install
+# (CI / Linux only) include OS dependencies:
+# npx playwright install --with-deps
+
+
+STEP 4 â€” Create the folder structure
+------------------------------------
+New-Item -ItemType Directory -Force -Path `
+  "src\config", "src\fixtures", "src\pages", "src\tests", `
+  "src\test-data", "src\utils", "logs", "downloads" | Out-Null
+
+
+STEP 5 â€” Create root config files
+---------------------------------
+# 5a. Create .gitignore (paste these lines into the file via your editor):
+#   node_modules/
+#   dist/
+#   test-results/
+#   allure-results/
+#   allure-report/
+#   playwright-report/
+#   logs/
+#   downloads/
+#   .env
+#   .env.local
+#   state.json
+#   storage-state.json
+#   .DS_Store
+#   Thumbs.db
+
+# 5b. tsconfig.json       â€” copy verbatim from Section D of this document.
+# 5c. playwright.config.ts â€” copy verbatim from Section D.
+# 5d. .env.example         â€” copy from Section D and add your domain keys.
+# 5e. package.json scripts â€” copy from Section D and merge with the npm-init scripts.
+
+NOTE: Use the VS Code editor to paste in the templates from Section D of this
+document for each of the files above. The blueprint is exact and verified.
+
+
+STEP 6 â€” Create source files (paste templates from Section D)
+-------------------------------------------------------------
+Create each of the following with the contents shown in Section D:
+
+  src\config\config.ts
+  src\config\globalSetup.ts
+  src\config\globalTeardown.ts
+  src\utils\Logger.ts
+  src\utils\apiLogin.ts
+  src\fixtures\baseFixtures.ts
+  src\pages\BasePage.ts
+  src\pages\LoginPage.ts
+  src\tests\TC001_LoginTest.spec.ts
+
+PowerShell snippet to scaffold empty placeholders quickly (then paste content):
+  $files = @(
+    "src\config\config.ts",
+    "src\config\globalSetup.ts",
+    "src\config\globalTeardown.ts",
+    "src\utils\Logger.ts",
+    "src\utils\apiLogin.ts",
+    "src\fixtures\baseFixtures.ts",
+    "src\pages\BasePage.ts",
+    "src\pages\LoginPage.ts",
+    "src\tests\TC001_LoginTest.spec.ts",
+    "tsconfig.json",
+    "playwright.config.ts",
+    ".env.example"
+  )
+  foreach ($f in $files) { New-Item -ItemType File -Force -Path $f | Out-Null }
+
+
+STEP 7 â€” Update package.json scripts
+------------------------------------
+Open package.json and replace the "scripts" block with the one from Section D
+of this document (pretest, test, posttest, test:headed, test:debug, test:sanity,
+test:regression, test:master, test:failed, test:single, report,
+allure:generate, allure:open, allure:report, lint, clean).
+
+
+STEP 8 â€” Customize for the new application
+------------------------------------------
+8a. Update LoginPage.ts locators to match the new app's login form
+    (replace #usernameInput / #passwordInput / #loginButton selectors).
+
+8b. If the new app is NOT Mendix, simplify BasePage.ts:
+    - Replace `waitForPageReady` jQuery-idle check with:
+        await this.page.waitForLoadState('networkidle');
+    - Remove `.mx-dialog` selectors and use the app's actual dialog markup.
+
+8c. Update playwright.config.ts:
+    - Change default baseURL fallback to your app URL.
+    - Adjust timeouts if the app is slower/faster.
+    - Enable / disable browser projects (chromium, edge, firefox, webkit).
+
+8d. Define domain config keys following the convention in Section G:
+    feat<X>      â†’ CREATE
+    beFeat<X>    â†’ BEFORE-EDIT row selector
+    eFeat<X>     â†’ EDIT new value
+    dFeat<X>     â†’ DELETE row selector
+    Add them to BOTH .env.example AND src/config/config.ts.
+
+
+STEP 9 â€” Create the local .env file (DO NOT commit)
+---------------------------------------------------
+Copy-Item ".env.example" ".env"
+# Edit .env to fill in real APP_URL, EMAIL, PASSWORD, etc.
+
+
+STEP 10 â€” Verify TypeScript compiles
+------------------------------------
+npm run lint
+# Must finish with zero errors before running tests.
+
+
+STEP 11 â€” First test run (smoke)
+--------------------------------
+npm test
+# - Cleans allure-results
+# - Runs all *.spec.ts under src/tests
+# - Generates and opens the Allure report automatically
+
+
+STEP 12 â€” Add a new domain page object and spec
+-----------------------------------------------
+For every new screen in the app, repeat:
+  a. Create src\pages\<Domain>Page.ts using the skeleton in Section D.
+  b. Add env keys (feat / beFeat / eFeat / dFeat) to .env.example, .env, config.ts.
+  c. Create src\tests\TC0NN_<Feature>Test.spec.ts using the spec template.
+  d. Tag the test title with @Sanity / @Regression / @Master as appropriate.
+  e. Run subset:
+       npm run test:single -- TC0NN
+     or full sanity:
+       npm run test:sanity
+
+
+STEP 13 â€” Useful run / debug commands
+-------------------------------------
+npx playwright test                                     # run all
+npx playwright test --headed                            # show browser
+npx playwright test --debug                             # Playwright Inspector
+npx playwright test src/tests/TC001_LoginTest.spec.ts   # single file
+npx playwright test --grep "@Sanity"                    # by tag
+npx playwright test --project=chromium                  # one browser only
+npx playwright test --last-failed                       # rerun failures
+npx playwright test --list                              # list discovered tests, no run
+npx playwright codegen <APP_URL>                        # record actions to TS code
+npx playwright show-report playwright-report            # open Playwright HTML report
+npx allure generate allure-results --clean -o allure-report
+npx allure open allure-report
+$env:PWDEBUG=1; npx playwright test                     # debug env var (PowerShell)
+
+
+STEP 14 â€” Initialize Git history
+--------------------------------
+git add .gitignore package.json package-lock.json tsconfig.json playwright.config.ts src/ .env.example
+git commit -m "Initial Playwright + TypeScript framework scaffold"
+
+
+STEP 15 â€” (Optional) CI/CD setup
+--------------------------------
+Add .github\workflows\playwright.yml using the template in the
+"CI/CD Integration â€“ GitHub Actions Example" section earlier in this document.
+Store APP_URL, EMAIL, PASSWORD, etc. as GitHub Actions secrets.
+
+
+STEP 16 â€” (Optional) Add API authentication path
+------------------------------------------------
+If the new app supports API login:
+  a. Identify the login endpoint and payload via DevTools â†’ Network.
+  b. Update apiLoginAndSaveState() in src/utils/apiLogin.ts payload keys.
+  c. In playwright.config.ts use:    use: { storageState: 'state.json' }
+  d. In globalSetup.ts call apiLoginAndSaveState('state.json') once per run.
+
+
+SUCCESS CRITERIA (mirrors Section I checklist)
+----------------------------------------------
+[ ] npm run lint â€” zero TypeScript errors
+[ ] npm test    â€” TC001 passes against the new app
+[ ] Allure report opens automatically post-run
+[ ] logs\test-execution.log contains timestamped entries
+[ ] On forced failure, test-results\ contains trace.zip + video + screenshot
+[ ] npm run test:sanity runs only @Sanity-tagged specs
+[ ] .env is NOT in git, .env.example IS in git
+[ ] A second page object can be added without modifying BasePage.ts
+
+
+QUICK ONE-SHOT BOOTSTRAP SCRIPT (PowerShell)
+--------------------------------------------
+Save the following as bootstrap.ps1 and run:
+  powershell -ExecutionPolicy Bypass -File bootstrap.ps1 <NewProjectName>
+
+----- bootstrap.ps1 (begin) -----
+param([Parameter(Mandatory=$true)][string]$Name)
+
+New-Item -ItemType Directory -Force -Path $Name | Out-Null
+Set-Location $Name
+
+git init | Out-Null
+npm init -y | Out-Null
+
+npm install --save-dev `
+  "@playwright/test@^1.49.0" `
+  "@types/node@^25.5.2" `
+  "allure-commandline@^2.30.0" `
+  "allure-playwright@^3.0.0" `
+  "dotenv@^16.4.5" `
+  "typescript@^5.6.0" `
+  "winston@^3.14.0" `
+  rimraf
+
+npx playwright install
+
+New-Item -ItemType Directory -Force -Path `
+  "src\config","src\fixtures","src\pages","src\tests","src\test-data","src\utils","logs","downloads" | Out-Null
+
+# Write .gitignore
+$gi = "node_modules/`r`ndist/`r`ntest-results/`r`nallure-results/`r`nallure-report/`r`nplaywright-report/`r`nlogs/`r`ndownloads/`r`n.env`r`n.env.local`r`nstate.json`r`nstorage-state.json"
+Set-Content -Path ".gitignore" -Value $gi -Encoding UTF8
+
+Write-Host "Scaffold created in $Name."
+Write-Host "Next: paste templates from FrameworkSetUp.txt Section D into the project files,"
+Write-Host "      then 'cp .env.example .env', edit .env, run 'npm run lint' and 'npm test'."
+----- bootstrap.ps1 (end) -----
+
+=======================================================================================================================
+END OF NEW-PROJECT GENERATION STEPS
+=======================================================================================================================
+
