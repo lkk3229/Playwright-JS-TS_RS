@@ -4,6 +4,7 @@ test('@Web First Playwright Test', async ({ browser }) => {
     
     const context = await browser.newContext();
     const page = await context.newPage();
+    //abort the network calls for images, css, etc. to speed up the test execution
     //page.route('**/*.{jpg,jpeg,png,css}', route => route.abort());
 
     const username = page.locator('#username');
