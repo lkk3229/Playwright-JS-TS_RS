@@ -11,7 +11,9 @@ test('@Web First Playwright Test', async ({ browser }) => {
     const password = page.locator('#password');
     const signInBtn = page.locator('#signInBtn');
     const cardTitles = page.locator('.card-body a');
+    // Listen to all the network calls and print the URL and status code
     page.on('request', request => console.log(request.url()));
+    // Listen to all the network responses and print the URL and status code
     page.on('response', response => console.log(response.url(), response.status()));
     await page.goto('https://rahulshettyacademy.com/loginpagePractise/');
 
